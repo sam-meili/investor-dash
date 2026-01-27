@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Input, Button, Field, Label, Heading, Text } from "@/catalyst";
-import { EyeIcon, EyeSlashIcon } from "@heroicons/react/24/outline";
-import { adminAuth } from "@/services/api";
+import { EyeIcon, EyeSlashIcon, ArrowRightOnRectangleIcon } from "@heroicons/react/24/outline";
+import { adminAuth, logout, setAdminPassword } from "@/services/api";
 import toast from "react-hot-toast";
 
 export default function InvestorPasswordGate({ children }) {
@@ -19,6 +19,12 @@ export default function InvestorPasswordGate({ children }) {
       const parsed = JSON.parse(authData);
       setIsAuthenticated(true);
       setIsArtemisManagement(parsed.isArtemisManagement);
+      
+      // Restore password to memory for API calls
+      if (parsed.password) {
+        setAdminPassword(parsed.password);
+      }
+      
       setIsChecking(false);
     } else {
       setIsChecking(false);
@@ -40,12 +46,13 @@ export default function InvestorPasswordGate({ children }) {
         setIsAuthenticated(true);
         setIsArtemisManagement(result.isArtemisManagement || false);
 
-        // Store in session storage
+        // Store in session storage (including password for API calls)
         sessionStorage.setItem(
           "investorAuth",
           JSON.stringify({
             isArtemisManagement: result.isArtemisManagement || false,
             authenticated: true,
+            password: password, // Store password for subsequent API calls
           })
         );
 
@@ -122,9 +129,28 @@ export default function InvestorPasswordGate({ children }) {
     );
   }
 
+  const handleLogout = () => {
+    logout();
+    setIsAuthenticated(false);
+    setIsArtemisManagement(false);
+    toast.success("Logged out successfully");
+  };
+
   // Render children with isArtemisManagement prop
   return (
     <div className="h-screen overflow-hidden flex flex-col">
+      {/* Logout button */}
+      <div className="absolute top-4 right-4 z-50">
+        <Button
+          onClick={handleLogout}
+          outline
+          className="flex items-center gap-2"
+        >
+          <ArrowRightOnRectangleIcon className="w-4 h-4" />
+          Logout
+        </Button>
+      </div>
+      
       {React.cloneElement(children, { isArtemisManagement })}
     </div>
   );
