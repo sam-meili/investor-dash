@@ -30,6 +30,9 @@ import {
   createQuarterGoal,
   updateQuarterGoal,
   deleteQuarterGoal,
+  createPipelineNote,
+  updatePipelineNote,
+  deletePipelineNote,
 } from "@/services/api";
 
 export default function InvestorDashboard({ isArtemisManagement = false }) {
@@ -45,6 +48,7 @@ export default function InvestorDashboard({ isArtemisManagement = false }) {
     contractorCount: 0,
     customers: [],
     pipelineClients: [],
+    pipelineNotes: [],
     pipelineMatrix: {
       smb: {
         initial_meeting: { count: 0, clients: [], totalValue: 0 },
@@ -81,6 +85,8 @@ export default function InvestorDashboard({ isArtemisManagement = false }) {
   const [quarterGoals, setQuarterGoals] = useState([]);
   const [showGoalModal, setShowGoalModal] = useState(false);
   const [editingGoal, setEditingGoal] = useState(null);
+  const [editingPipelineNotes, setEditingPipelineNotes] = useState(false);
+  const [tempPipelineNotes, setTempPipelineNotes] = useState([]);
 
   useEffect(() => {
     fetchKPIs();
@@ -543,6 +549,78 @@ export default function InvestorDashboard({ isArtemisManagement = false }) {
     return `Q${quarter} ${year}`;
   };
 
+  const handleEditPipelineNotes = () => {
+    setTempPipelineNotes(
+      kpis.pipelineNotes?.map((note) => ({ ...note })) || []
+    );
+    setEditingPipelineNotes(true);
+  };
+
+  const handleCancelEditPipelineNotes = () => {
+    setTempPipelineNotes([]);
+    setEditingPipelineNotes(false);
+  };
+
+  const handleSavePipelineNotes = async () => {
+    try {
+      const currentNotes = kpis.pipelineNotes || [];
+      const currentIds = new Set(currentNotes.map((n) => n.id));
+      const tempIds = new Set(tempPipelineNotes.map((n) => n.id));
+
+      // Delete removed notes
+      for (const note of currentNotes) {
+        if (!tempIds.has(note.id)) {
+          await deletePipelineNote(note.id);
+        }
+      }
+
+      // Create or update notes
+      for (let i = 0; i < tempPipelineNotes.length; i++) {
+        const note = tempPipelineNotes[i];
+        const noteData = {
+          id: note.id,
+          content: note.content,
+          order: i,
+        };
+
+        if (currentIds.has(note.id)) {
+          // Update existing
+          await updatePipelineNote(note.id, noteData);
+        } else {
+          // Create new
+          await createPipelineNote(noteData);
+        }
+      }
+
+      toast.success("Pipeline notes saved");
+      setEditingPipelineNotes(false);
+      setTempPipelineNotes([]);
+      fetchKPIs();
+    } catch (error) {
+      console.error("Error saving pipeline notes:", error);
+      toast.error("Failed to save pipeline notes");
+    }
+  };
+
+  const handleAddPipelineNote = () => {
+    setTempPipelineNotes([
+      ...tempPipelineNotes,
+      { id: uuidv4(), content: "", order: tempPipelineNotes.length },
+    ]);
+  };
+
+  const handleUpdatePipelineNoteContent = (id, content) => {
+    setTempPipelineNotes(
+      tempPipelineNotes.map((note) =>
+        note.id === id ? { ...note, content } : note
+      )
+    );
+  };
+
+  const handleDeletePipelineNoteTemp = (id) => {
+    setTempPipelineNotes(tempPipelineNotes.filter((note) => note.id !== id));
+  };
+
   if (isLoading) {
     return (
       <div className="h-svh flex justify-center items-center">
@@ -942,21 +1020,125 @@ export default function InvestorDashboard({ isArtemisManagement = false }) {
             )}
           </CardTitle>
           <CardBody>
+            {/* Pipeline Notes Section */}
+            <div className="mb-6 p-4 bg-zinc-50 dark:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="text-sm font-semibold text-zinc-950 dark:text-white">
+                  Pipeline Notes
+                </h3>
+                {isArtemisManagement && (
+                  <div className="flex gap-2">
+                    {editingPipelineNotes ? (
+                      <>
+                        <Button
+                          onClick={handleSavePipelineNotes}
+                          className="text-xs"
+                        >
+                          Save
+                        </Button>
+                        <Button
+                          onClick={handleCancelEditPipelineNotes}
+                          outline
+                          className="text-xs"
+                        >
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <Button
+                        onClick={handleEditPipelineNotes}
+                        outline
+                        className="text-xs"
+                      >
+                        Edit Notes
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+              {editingPipelineNotes ? (
+                <div className="space-y-2">
+                  {tempPipelineNotes.length > 0 ? (
+                    tempPipelineNotes.map((note, index) => (
+                      <div key={note.id} className="flex gap-2 items-start">
+                        <span className="text-zinc-500 dark:text-zinc-400 mt-2">
+                          •
+                        </span>
+                        <Input
+                          value={note.content}
+                          onChange={(e) =>
+                            handleUpdatePipelineNoteContent(
+                              note.id,
+                              e.target.value
+                            )
+                          }
+                          placeholder="Enter note..."
+                          className="flex-1"
+                        />
+                        <Button
+                          onClick={() => handleDeletePipelineNoteTemp(note.id)}
+                          outline
+                          className="text-xs text-red-600"
+                        >
+                          Delete
+                        </Button>
+                      </div>
+                    ))
+                  ) : (
+                    <Text className="text-zinc-500 dark:text-zinc-400 text-sm">
+                      No notes yet. Click "Add Note" to create one.
+                    </Text>
+                  )}
+                  <Button
+                    onClick={handleAddPipelineNote}
+                    outline
+                    className="text-xs mt-2"
+                  >
+                    Add Note
+                  </Button>
+                </div>
+              ) : (
+                <div>
+                  {kpis.pipelineNotes?.length > 0 ? (
+                    <ul className="space-y-1">
+                      {kpis.pipelineNotes.map((note) => (
+                        <li
+                          key={note.id}
+                          className="text-sm text-zinc-700 dark:text-zinc-300"
+                        >
+                          • {note.content}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <Text className="text-zinc-500 dark:text-zinc-400 text-sm">
+                      No pipeline notes yet.
+                      {isArtemisManagement &&
+                        " Click 'Edit Notes' to add some."}
+                    </Text>
+                  )}
+                </div>
+              )}
+            </div>
+            
             <div className="overflow-x-auto">
               <table className="w-full border-collapse" style={{ tableLayout: "fixed" }}>
                 <thead>
                   <tr>
-                    <th className="p-3 text-left font-semibold text-zinc-950 dark:text-white border-b border-zinc-200 dark:border-zinc-700" style={{ width: "25%" }}>
+                    <th className="p-3 text-left font-semibold text-zinc-950 dark:text-white border-b border-zinc-200 dark:border-zinc-700" style={{ width: "20%" }}>
                       Stage / Segment
                     </th>
-                    <th className="p-3 text-center font-semibold text-zinc-950 dark:text-white border-b border-zinc-200 dark:border-zinc-700" style={{ width: "25%" }}>
+                    <th className="p-3 text-center font-semibold text-zinc-950 dark:text-white border-b border-zinc-200 dark:border-zinc-700" style={{ width: "20%" }}>
                       SMB
                     </th>
-                    <th className="p-3 text-center font-semibold text-zinc-950 dark:text-white border-b border-zinc-200 dark:border-zinc-700" style={{ width: "25%" }}>
+                    <th className="p-3 text-center font-semibold text-zinc-950 dark:text-white border-b border-zinc-200 dark:border-zinc-700" style={{ width: "20%" }}>
                       Mid Market
                     </th>
-                    <th className="p-3 text-center font-semibold text-zinc-950 dark:text-white border-b border-zinc-200 dark:border-zinc-700" style={{ width: "25%" }}>
+                    <th className="p-3 text-center font-semibold text-zinc-950 dark:text-white border-b border-zinc-200 dark:border-zinc-700" style={{ width: "20%" }}>
                       Large Cap
+                    </th>
+                    <th className="p-3 text-center font-semibold text-zinc-950 dark:text-white border-b border-zinc-200 dark:border-zinc-700" style={{ width: "20%" }}>
+                      Row Total
                     </th>
                   </tr>
                 </thead>
@@ -966,45 +1148,112 @@ export default function InvestorDashboard({ isArtemisManagement = false }) {
                     { key: "pilot_scoping", label: "Pilot Scoping" },
                     { key: "pilot", label: "Pilot" },
                     { key: "contracting", label: "Contracting" },
-                  ].map((stage) => (
-                    <tr
-                      key={stage.key}
-                      className="border-b border-zinc-100 dark:border-zinc-800"
-                    >
-                      <td className="p-3 font-medium text-zinc-950 dark:text-white">
-                        {stage.label}
-                      </td>
-                      {["smb", "mid_market", "large_cap"].map((segment) => {
+                  ].map((stage) => {
+                    // Calculate row total for this stage
+                    const rowTotal = ["smb", "mid_market", "large_cap"].reduce(
+                      (sum, segment) => {
                         const cellData = kpis.pipelineMatrix?.[segment]?.[
                           stage.key
-                        ] || {
-                          count: 0,
-                          clients: [],
-                          totalValue: 0,
-                        };
-                        return (
-                          <td
-                            key={`${segment}-${stage.key}`}
-                            className="p-3 text-center"
-                          >
-                            <button
-                              onClick={() =>
-                                openPipelineCellModal(segment, stage.key)
-                              }
-                              className="w-full p-4 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:ring-2 hover:ring-teal-500/50 transition-all cursor-pointer"
+                        ] || { totalValue: 0 };
+                        return sum + (cellData.totalValue || 0);
+                      },
+                      0
+                    );
+
+                    return (
+                      <tr
+                        key={stage.key}
+                        className="border-b border-zinc-100 dark:border-zinc-800"
+                      >
+                        <td className="p-3 font-medium text-zinc-950 dark:text-white">
+                          {stage.label}
+                        </td>
+                        {["smb", "mid_market", "large_cap"].map((segment) => {
+                          const cellData = kpis.pipelineMatrix?.[segment]?.[
+                            stage.key
+                          ] || {
+                            count: 0,
+                            clients: [],
+                            totalValue: 0,
+                          };
+                          return (
+                            <td
+                              key={`${segment}-${stage.key}`}
+                              className="p-3 text-center"
                             >
-                              <div className="text-2xl font-bold text-zinc-950 dark:text-white mb-1">
-                                {cellData.count || 0}
-                              </div>
-                              <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                                {formatCurrency(cellData.totalValue || 0)}
-                              </div>
-                            </button>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
+                              <button
+                                onClick={() =>
+                                  openPipelineCellModal(segment, stage.key)
+                                }
+                                className="w-full p-4 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 hover:ring-2 hover:ring-teal-500/50 transition-all cursor-pointer"
+                              >
+                                <div className="text-2xl font-bold text-zinc-950 dark:text-white mb-1">
+                                  {cellData.count || 0}
+                                </div>
+                                <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                                  {formatCurrency(cellData.totalValue || 0)}
+                                </div>
+                              </button>
+                            </td>
+                          );
+                        })}
+                        <td className="p-3 text-center bg-zinc-50 dark:bg-zinc-900">
+                          <div className="p-4 rounded-lg">
+                            <div className="text-sm font-semibold text-zinc-950 dark:text-white">
+                              {formatCurrency(rowTotal)}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {/* Column Totals Row */}
+                  <tr className="border-t-2 border-zinc-300 dark:border-zinc-600 bg-zinc-50 dark:bg-zinc-900">
+                    <td className="p-3 font-semibold text-zinc-950 dark:text-white">
+                      Column Total
+                    </td>
+                    {["smb", "mid_market", "large_cap"].map((segment) => {
+                      const columnTotal = [
+                        "initial_meeting",
+                        "pilot_scoping",
+                        "pilot",
+                        "contracting",
+                      ].reduce((sum, stageKey) => {
+                        const cellData = kpis.pipelineMatrix?.[segment]?.[
+                          stageKey
+                        ] || { totalValue: 0 };
+                        return sum + (cellData.totalValue || 0);
+                      }, 0);
+
+                      return (
+                        <td key={segment} className="p-3 text-center">
+                          <div className="p-4 rounded-lg">
+                            <div className="text-sm font-semibold text-zinc-950 dark:text-white">
+                              {formatCurrency(columnTotal)}
+                            </div>
+                          </div>
+                        </td>
+                      );
+                    })}
+                    <td className="p-3 text-center bg-zinc-100 dark:bg-zinc-800">
+                      <div className="p-4 rounded-lg">
+                        <div className="text-base font-bold text-zinc-950 dark:text-white">
+                          {formatCurrency(
+                            Object.values(kpis.pipelineMatrix || {}).reduce(
+                              (sum, segment) =>
+                                sum +
+                                Object.values(segment || {}).reduce(
+                                  (segSum, stage) =>
+                                    segSum + (stage.totalValue || 0),
+                                  0
+                                ),
+                              0
+                            )
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
                 </tbody>
               </table>
             </div>

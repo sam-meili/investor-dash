@@ -378,3 +378,41 @@ export async function deleteQuarterGoal(id) {
   }, true);
 }
 
+// ============================================
+// Pipeline Note CRUD
+// ============================================
+
+export async function listPipelineNotes() {
+  const result = await callEdgeFunction("data-read", { 
+    operation: "list", 
+    table: "pipeline_note" 
+  }, true);
+  return result.data;
+}
+
+export async function createPipelineNote(note) {
+  const result = await callEdgeFunction("data-write", { 
+    operation: "create", 
+    table: "pipeline_note",
+    data: note
+  }, true);
+  return result.data;
+}
+
+export async function updatePipelineNote(id, updates) {
+  const result = await callEdgeFunction("data-write", { 
+    operation: "update", 
+    table: "pipeline_note",
+    id,
+    data: updates
+  }, true);
+  return result.data;
+}
+
+export async function deletePipelineNote(id) {
+  await callEdgeFunction("data-write", { 
+    operation: "delete", 
+    table: "pipeline_note",
+    id
+  }, true);
+}

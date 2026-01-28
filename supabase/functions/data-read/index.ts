@@ -2,35 +2,46 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // PBKDF2 password verification
-async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+async function verifyPassword(
+  password: string,
+  storedHash: string,
+): Promise<boolean> {
   try {
     const parts = storedHash.split("$");
     if (parts.length !== 3) return false;
-    
+
     const [iterationsStr, saltBase64, hashBase64] = parts;
     const iterations = parseInt(iterationsStr, 10);
     if (isNaN(iterations)) return false;
-    
-    const salt = Uint8Array.from(atob(saltBase64), c => c.charCodeAt(0));
-    const storedHashBytes = Uint8Array.from(atob(hashBase64), c => c.charCodeAt(0));
-    
+
+    const salt = Uint8Array.from(atob(saltBase64), (c) => c.charCodeAt(0));
+    const storedHashBytes = Uint8Array.from(atob(hashBase64), (c) =>
+      c.charCodeAt(0),
+    );
+
     const passwordBuffer = new TextEncoder().encode(password);
-    const key = await crypto.subtle.importKey("raw", passwordBuffer, { name: "PBKDF2" }, false, ["deriveBits"]);
-    
+    const key = await crypto.subtle.importKey(
+      "raw",
+      passwordBuffer,
+      { name: "PBKDF2" },
+      false,
+      ["deriveBits"],
+    );
+
     const hashBuffer = await crypto.subtle.deriveBits(
       { name: "PBKDF2", salt: salt, iterations: iterations, hash: "SHA-256" },
       key,
-      32 * 8
+      32 * 8,
     );
-    
+
     const hashBytes = new Uint8Array(hashBuffer);
     if (hashBytes.length !== storedHashBytes.length) return false;
-    
+
     let diff = 0;
     for (let i = 0; i < hashBytes.length; i++) {
       diff |= hashBytes[i] ^ storedHashBytes[i];
     }
-    
+
     return diff === 0;
   } catch (error) {
     console.error("Error verifying password:", error);
@@ -41,15 +52,17 @@ async function verifyPassword(password: string, storedHash: string): Promise<boo
 // CORS headers
 function getCorsHeaders(origin: string | null): HeadersInit {
   const allowedOrigins = Deno.env.get("ALLOWED_ORIGINS")?.split(",") || [];
-  const allowOrigin = allowedOrigins.length === 0 
-    ? (origin || "*")
-    : (origin && allowedOrigins.some(o => origin.includes(o.trim()))) 
-      ? origin 
-      : "null";
-  
+  const allowOrigin =
+    allowedOrigins.length === 0
+      ? origin || "*"
+      : origin && allowedOrigins.some((o) => origin.includes(o.trim()))
+        ? origin
+        : "null";
+
   return {
     "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-admin-password",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type, x-admin-password",
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Max-Age": "86400",
   };
@@ -57,7 +70,11 @@ function getCorsHeaders(origin: string | null): HeadersInit {
 
 // Rate limiting
 const rateLimits = new Map<string, { count: number; resetTime: number }>();
-function checkRateLimit(key: string, maxRequests: number, windowMs: number): boolean {
+function checkRateLimit(
+  key: string,
+  maxRequests: number,
+  windowMs: number,
+): boolean {
   const now = Date.now();
   const entry = rateLimits.get(key);
   if (!entry || now > entry.resetTime) {
@@ -70,10 +87,13 @@ function checkRateLimit(key: string, maxRequests: number, windowMs: number): boo
 }
 
 // Authenticate admin password
-async function authenticateAdmin(password: string, supabase: any): Promise<boolean> {
+async function authenticateAdmin(
+  password: string,
+  supabase: any,
+): Promise<boolean> {
   const { data: passwords, error } = await supabase
     .from("investor_password")
-    .select("password_hash, password");
+    .select("password_hash");
 
   if (error) {
     console.error("Database error during auth:", error);
@@ -84,8 +104,6 @@ async function authenticateAdmin(password: string, supabase: any): Promise<boole
     if (user.password_hash) {
       const isValid = await verifyPassword(password, user.password_hash);
       if (isValid) return true;
-    } else if (user.password && user.password === password) {
-      return true;
     }
   }
 
@@ -95,26 +113,26 @@ async function authenticateAdmin(password: string, supabase: any): Promise<boole
 serve(async (req) => {
   const origin = req.headers.get("origin");
   const corsHeaders = getCorsHeaders(origin);
-  
+
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
-    return new Response("ok", { 
+    return new Response("ok", {
       status: 200,
-      headers: corsHeaders
+      headers: corsHeaders,
     });
   }
 
   try {
     // Rate limiting (60 requests per minute)
-    const ip = req.headers.get("x-forwarded-for") || req.headers.get("x-real-ip") || "unknown";
+    const ip =
+      req.headers.get("x-forwarded-for") ||
+      req.headers.get("x-real-ip") ||
+      "unknown";
     if (!checkRateLimit(ip, 60, 60 * 1000)) {
-      return new Response(
-        JSON.stringify({ error: "Too many requests" }),
-        {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ error: "Too many requests" }), {
+        status: 429,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Get admin password from header
@@ -125,7 +143,7 @@ serve(async (req) => {
         {
           status: 401,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
@@ -142,13 +160,10 @@ serve(async (req) => {
     // Authenticate admin
     const isAuthenticated = await authenticateAdmin(adminPassword, supabase);
     if (!isAuthenticated) {
-      return new Response(
-        JSON.stringify({ error: "Invalid credentials" }),
-        {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ error: "Invalid credentials" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Parse request body
@@ -157,13 +172,10 @@ serve(async (req) => {
     // Validate operation
     const allowedOperations = ["getKPIs", "list", "get"];
     if (!allowedOperations.includes(operation)) {
-      return new Response(
-        JSON.stringify({ error: "Invalid operation" }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ error: "Invalid operation" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Whitelist allowed tables
@@ -173,7 +185,8 @@ serve(async (req) => {
       "customer",
       "employee_count",
       "pipeline_client",
-      "quarter_goal"
+      "quarter_goal",
+      "pipeline_note",
     ];
 
     // Handle getKPIs operation (aggregated data)
@@ -201,23 +214,32 @@ serve(async (req) => {
         .from("pipeline_client")
         .select("*");
 
+      const { data: pipelineNotes } = await supabase
+        .from("pipeline_note")
+        .select("*")
+        .order("order", { ascending: true });
+
       const customerCount = customers?.length || 0;
       const totalARR =
         customers?.reduce((sum, customer) => sum + (customer.arr || 0), 0) || 0;
       const totalContractValue =
         customers?.reduce(
           (sum, customer) => sum + (customer.contract_value || 0),
-          0
+          0,
         ) || 0;
 
       const latestFullTimeCount =
         employeeCounts
           ?.filter((ec) => ec.is_full_time === true)
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.count || 0;
+          .sort(
+            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+          )[0]?.count || 0;
       const latestContractorCount =
         employeeCounts
           ?.filter((ec) => ec.is_full_time === false)
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0]?.count || 0;
+          .sort(
+            (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+          )[0]?.count || 0;
 
       // Format pipeline clients
       const formatPipelineClient = (p: any) => ({
@@ -231,31 +253,39 @@ serve(async (req) => {
         notes: p.notes,
         daysSinceEngagement: p.engagement_start_date
           ? Math.floor(
-              (new Date().getTime() - new Date(p.engagement_start_date).getTime()) /
-                (1000 * 60 * 60 * 24)
+              (new Date().getTime() -
+                new Date(p.engagement_start_date).getTime()) /
+                (1000 * 60 * 60 * 24),
             )
           : 0,
       });
 
-      const formattedClients = (pipelineClients || []).map(formatPipelineClient);
+      const formattedClients = (pipelineClients || []).map(
+        formatPipelineClient,
+      );
 
       // Group pipeline by segment and stage
       const segments = ["smb", "mid_market", "large_cap"];
-      const stages = ["initial_meeting", "pilot_scoping", "pilot", "contracting"];
+      const stages = [
+        "initial_meeting",
+        "pilot_scoping",
+        "pilot",
+        "contracting",
+      ];
 
       const pipelineMatrix: any = {};
       segments.forEach((segment) => {
         pipelineMatrix[segment] = {};
         stages.forEach((stage) => {
           const clients = formattedClients.filter(
-            (p) => p.segment === segment && p.stage === stage
+            (p) => p.segment === segment && p.stage === stage,
           );
           pipelineMatrix[segment][stage] = {
             count: clients.length,
             clients: clients,
             totalValue: clients.reduce(
               (sum, c) => sum + (c.estimatedContractSize || 0),
-              0
+              0,
             ),
           };
         });
@@ -283,24 +313,22 @@ serve(async (req) => {
           })),
           pipelineClients: formattedClients,
           pipelineMatrix: pipelineMatrix,
+          pipelineNotes: pipelineNotes || [],
         }),
         {
           status: 200,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
+        },
       );
     }
 
     // Handle list operation
     if (operation === "list") {
       if (!table || !allowedTables.includes(table)) {
-        return new Response(
-          JSON.stringify({ error: "Invalid table" }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
+        return new Response(JSON.stringify({ error: "Invalid table" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
       let query = supabase.from(table).select("*");
@@ -319,7 +347,13 @@ serve(async (req) => {
         query = query.order("month", { ascending: false });
       } else if (table === "employee_count") {
         query = query.order("date", { ascending: false });
-      } else if (table === "quarter_goal" && filters?.quarter && filters?.year) {
+      } else if (
+        table === "quarter_goal" &&
+        filters?.quarter &&
+        filters?.year
+      ) {
+        query = query.order("order", { ascending: true });
+      } else if (table === "pipeline_note") {
         query = query.order("order", { ascending: true });
       }
 
@@ -332,17 +366,14 @@ serve(async (req) => {
           {
             status: 500,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
-      return new Response(
-        JSON.stringify({ data }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ data }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Handle get operation (single record)
@@ -353,7 +384,7 @@ serve(async (req) => {
           {
             status: 400,
             headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
+          },
         );
       }
 
@@ -365,40 +396,27 @@ serve(async (req) => {
 
       if (error) {
         console.error("Database error:", error);
-        return new Response(
-          JSON.stringify({ error: "Record not found" }),
-          {
-            status: 404,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
+        return new Response(JSON.stringify({ error: "Record not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
       }
 
-      return new Response(
-        JSON.stringify({ data }),
-        {
-          status: 200,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        }
-      );
+      return new Response(JSON.stringify({ data }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    return new Response(
-      JSON.stringify({ error: "Invalid request" }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
-
+    return new Response(JSON.stringify({ error: "Invalid request" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   } catch (error) {
     console.error("Error in data-read function:", error);
-    return new Response(
-      JSON.stringify({ error: "Internal server error" }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
