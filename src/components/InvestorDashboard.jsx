@@ -1485,7 +1485,7 @@ export default function InvestorDashboard({ isArtemisManagement = false }) {
                 </select>
               </Field>
               <Field>
-                <Label>Estimated Contract Size ($)</Label>
+                <Label>Full Annualized Contract 2027 Target ($)</Label>
                 <Input
                   type="number"
                   value={editValues.estimatedContractSize || 0}
@@ -1695,7 +1695,7 @@ export default function InvestorDashboard({ isArtemisManagement = false }) {
                       <div className="space-y-1">
                         <div className="text-sm text-zinc-600 dark:text-zinc-400">
                           <span className="font-medium">
-                            Est. Contract Value:
+                            Full Annualized Contract 2027 Target:
                           </span>{" "}
                           {formatCurrency(client.estimatedContractSize || 0)}
                         </div>
